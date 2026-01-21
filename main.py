@@ -5,62 +5,54 @@ from langchain_openai import AzureChatOpenAI
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage
-
+from langchain_classic import hub
+from langchain_core.tools.render import render_text_description
 
 load_dotenv()
 
+
 @tool
-def search(query: str) -> str:
-    """
-    Tool that seaches internet for a given query.
-    Args:
-        query (str): The search query.
-    Returns:
-        str: The search results.
-    """
-    return f"Search results for {query}"
+def get_text_length(text: str) -> int:
+    """Returns the length of the given text."""
+    return len(text)
+
 
 def main():
-    # print("Hello from langchain-course!")
-    # information = """
-    # Elon musk is the CEO of SpaceX and Tesla.
-    # He was born in South Africa and later moved to the United States.
-    # He is known for his work in the fields of space exploration, electric vehicles, and renewable energy.
-    # """
-    # summary_template = """
-    # Summarize the following information in a concise manner:
-    # {information}
-    # 1. provide short summary
-    # 2. two interesting facts about the person
-    # """
+    print("Loading environment variables from .env file...")
+    # print(get_text_length("Hello, world!"))  # Example usage of the utility function
+    tools = [get_text_length]
+    template = """
+    Answer the following question using the provided tools.
+    {tools}
+    Use the following format:
+    Question: the input question you must answer
+    Thought: you should always think about what to do
+    Action: the action to take, should be one of [{tool_names}]
+    Action Input: the input to the action
+    Observation: the result of the action
+    ... (this Thought/Action/Action Input/Observation can repeat N times)
+    Thought: I now know the final answer
+    Final Answer: the final answer to the original question
 
-    # summry_prompt_template = PromptTemplate(
-    #     input_variables=["information"],
-    #     template=summary_template
-    # )
-
-    # llm = AzureChatOpenAI(
-    #     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    #     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    #     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    #     deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
-    # )
-
-    # chain = summry_prompt_template | llm
-    # response = chain.invoke({"information": information})
-    # print("Response from Azure OpenAI:")
-    # print(response.content)
-    llm = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
+    begin!
+    Question: {input}
+    Thought: 
+    """
+    prompt = PromptTemplate.from_template(template).partial(
+        tool_names=", ".join([tool.name for tool in tools]), tools=render_text_description(tools)
     )
-    tools = [search]
-    agent = create_agent(model=llm, tools=tools)
-    result = agent.invoke({"messages":HumanMessage(content="Whats the weather in Tokyo")})
-    print("Agent Result:")
-    print(result)
+    llm = AzureChatOpenAI(
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"),
+        model_name=os.getenv("AZURE_OPENAI_MODEL_NAME"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    )
+    agent = {"input": lambda x: x["input"]} | prompt | llm 
+    response = agent.invoke(
+        {"input": "What is the length of the text 'Hello, world!'?"}
+    )
+    print(response)
 
 
 if __name__ == "__main__":
