@@ -1,12 +1,9 @@
 from dotenv import load_dotenv
 import os
-from langchain_core.prompts import PromptTemplate
 from langchain_openai import AzureChatOpenAI
-from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage
-from langchain_classic import hub
-from langchain_core.tools.render import render_text_description
+from langgraph.prebuilt import create_react_agent
 
 load_dotenv()
 
@@ -19,28 +16,9 @@ def get_text_length(text: str) -> int:
 
 def main():
     print("Loading environment variables from .env file...")
-    # print(get_text_length("Hello, world!"))  # Example usage of the utility function
     tools = [get_text_length]
-    template = """
-    Answer the following question using the provided tools.
-    {tools}
-    Use the following format:
-    Question: the input question you must answer
-    Thought: you should always think about what to do
-    Action: the action to take, should be one of [{tool_names}]
-    Action Input: the input to the action
-    Observation: the result of the action
-    ... (this Thought/Action/Action Input/Observation can repeat N times)
-    Thought: I now know the final answer
-    Final Answer: the final answer to the original question
-
-    begin!
-    Question: {input}
-    Thought: 
-    """
-    prompt = PromptTemplate.from_template(template).partial(
-        tool_names=", ".join([tool.name for tool in tools]), tools=render_text_description(tools)
-    )
+    
+    # Create the LLM with tool calling support
     llm = AzureChatOpenAI(
         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -48,11 +26,17 @@ def main():
         model_name=os.getenv("AZURE_OPENAI_MODEL_NAME"),
         api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
     )
-    agent = {"input": lambda x: x["input"]} | prompt | llm 
-    response = agent.invoke(
-        {"input": "What is the length of the text 'Hello, world!'?"}
+    
+    # Create the agent using LangGraph (modern tool calling approach)
+    agent_executor = create_react_agent(llm, tools)
+    
+    # Invoke the agent
+    response = agent_executor.invoke(
+        {"messages": [HumanMessage(content="What is the length of the text 'Hello, world!'?")]}
     )
-    print(response)
+    
+    print("\nFinal response:")
+    print(response["messages"][-1].content)
 
 
 if __name__ == "__main__":
